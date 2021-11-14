@@ -6,11 +6,8 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 )
-
-const Path = "RoutinesExercise/1/tmp/"
-
-var wg sync.WaitGroup
 
 type File struct {
 	name    string
@@ -18,70 +15,60 @@ type File struct {
 	contain string
 }
 
-func CreateFile(idx int, in chan File) {
-	defer wg.Done()
-	filePath := Path + strconv.Itoa(idx) + ".txt"
-	file := File{}
-	file.name = filePath
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Println(err)
-		os.Exit(1)
-	}
-	file.contain = string(data)
-	in <- file
+const Path = "RoutinesExercise/1/tmp/"
 
-}
-
-func FilterFile(idx int, in chan File, out chan File) {
-	//defer wg.Done()
-	for {
-		file, ok := <-in
-		fmt.Println(idx, "sorter work with ", file)
-		if !ok {
-			close(out)
-			return
-		}
-		file.filter = Filter([]byte(file.contain))
-		if file.filter {
-			out <- file
-		}
-	}
-}
-
-func ShowFiles(in <-chan File) {
-	for file := range in {
-		fmt.Println(file.name, file.contain)
-	}
-}
+var wg = sync.WaitGroup{}
 
 func main() {
+	start := time.Now()
+	c1 := make(chan int, 100000)
+	c2 := make(chan File, 100000)
 
-	c1 := make(chan File)
-	c2 := make(chan File)
+	for i := 0; i < 5; i++ {
+		go FileInit(i, c1, c2)
+		go FileReviewer(i, c2)
+	}
 
-	for w := 0; w < 10; w++ {
+	for i := 0; i < 100000; i++ {
 		wg.Add(1)
-		go CreateFile(w, c1)
+		c1 <- i
 	}
-
-	for w := 0; w < 2; w++ {
-		go FilterFile(w, c1, c2)
-	}
-	ShowFiles(c2)
-
 	wg.Wait()
 
+	fmt.Println(time.Since(start))
 }
 
-func Filter(b []byte) bool {
+func FileReviewer(idx int, in chan File) {
+	defer close(in)
+	for {
+		fmt.Println(idx, "reviewer show file: ", <-in)
+	}
+}
+
+func FileInit(worker int, input chan int, out chan File) {
+	defer close(input)
+	for {
+		fileIdx := <-input
+		fileName := Path + strconv.Itoa(fileIdx) + ".txt"
+		fileData, err := os.ReadFile(fileName)
+		if err != nil {
+			log.Println(err)
+		}
+		fileFlag := Filter(fileData)
+		out <- File{name: fileName, filter: fileFlag, contain: string(fileData)}
+		fmt.Println("worker ", worker, "work with", fileIdx)
+		wg.Done()
+	}
+}
+
+func Filter(b []byte) (ans bool) {
 	num, err := strconv.Atoi(string(b))
 	if err != nil {
 		log.Println(err)
-		return false
+		return
 	}
 	if num > 6000000000000000000 {
 		return true
 	}
-	return false
+	return
 }
